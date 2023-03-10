@@ -28,6 +28,9 @@
 #define WIRED_MODE_PIN 33
 #define WIRELESS_MODE_PIN 25
 
+const uint16_t MIN_SAMPLING_DELAY = 10;
+const uint16_t MAX_SAMPLING_DELAY = 2000;
+
 // Timer variables
 unsigned long lastTime = 0;
 unsigned long samplingDelay = 5000;
@@ -56,12 +59,24 @@ class MyServerCallbacks: public BLEServerCallbacks {
   }
 };
 
+union ByteArrayToInt {
+  byte array[2];
+  uint16_t integer;
+};
+
 // Setup data recieved callback
 class SettingsUpdatedCallback: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-      std::string rxValue = pCharacteristic->getValue();
+      uint8_t* rxValue = pCharacteristic->getData();
+
+      ByteArrayToInt converter;
+      converter.array[0] = rxValue[0];
+      converter.array[1] = rxValue[1];
+      Serial.print("Second: ");
+      Serial.println(converter.integer);
       
-      Serial.println(rxValue.c_str()); //TODO FIX
+      // limit the sampling delay to the max and min value
+      samplingDelay = std::max(std::min(converter.integer, MAX_SAMPLING_DELAY), MIN_SAMPLING_DELAY);
    }
 };
 
