@@ -19,8 +19,8 @@
 #define bleServerName "BME_IMU_0BE6"
 #define SERVICE_UUID "0ddf5c1d-d269-4b17-bd7f-33a8658f0b89"
 
-#define BLUE_PIN 13
-#define RED_PIN 12
+#define BLUE_PIN 12
+#define RED_PIN 13
 #define MPU_POWER_PIN 19
 #define PAIR_PIN 26
 #define POWER_OFF_PIN 32
@@ -35,11 +35,8 @@ unsigned long samplingDelay = 5000;
 bool deviceConnected = false;
 
 // Test Characteristic and Descriptor
-BLECharacteristic accelerometerCharacteristics("00000000-0000-0000-0000-000000000001", BLECharacteristic::PROPERTY_NOTIFY);
-BLECharacteristic gyroscopeCharacteristics("00000000-0000-0000-0000-000000000002", BLECharacteristic::PROPERTY_NOTIFY);
-BLECharacteristic sampleRateCharacteristics("00000000-0000-0000-0000-000000000003", BLECharacteristic::PROPERTY_WRITE);
-BLEDescriptor dataDescriptor(BLEUUID((uint16_t)0x2902), BLECharacteristic::PROPERTY_READ);
-
+BLECharacteristic imuCharacteristics("00000000-0000-0000-0000-000000000001", BLECharacteristic::PROPERTY_NOTIFY);
+BLECharacteristic sampleRateCharacteristics("00000000-0000-0000-0000-000000000002", BLECharacteristic::PROPERTY_WRITE);
 
 const int MPU_addr = 0x68; // I2C address of the MPU-6050
 byte output[12];
@@ -147,26 +144,10 @@ void clientHandlerCode ( void * parameters) {
   for (;;) {
     if (transmitMode) {
       if (deviceConnected && (millis() - lastTime) > samplingDelay) {
-        // char vals[24];
-        // char sendValue[3];
-        //  for (int i = 0; i < 6; i++) {
-          
-        //   Serial.print(i);
-        //   Serial.print(" value: ");
-        //   Serial.print(output[i]);
-        //   Serial.print(" - ");
-        //   sprintf(sendValue, "%3.03d", output[i]);
-        //   Serial.println(sendValue);
-        //   strcat(vals, sendValue);
-        // }
-
-        // Serial.print("Final: ");
-        // Serial.println(vals);
-        // Set Tests Characteristic value and notify connected client
-        accelerometerCharacteristics.setValue(output, 12);
+        // Set Characteristic value and notify connected client
+        imuCharacteristics.setValue(output, 12);
         
-        accelerometerCharacteristics.notify();
-        // strcpy(vals, "");
+        imuCharacteristics.notify();
         lastTime = millis();
       }
     } else {
@@ -207,11 +188,16 @@ void loop() {
     startSleep();
   } else if (digitalRead(WIRED_MODE_PIN) == LOW) {
     transmitMode = false;
+
+    // turn on the red light
     digitalWrite(BLUE_PIN, HIGH);
     digitalWrite(RED_PIN, LOW);
   } else if (digitalRead(WIRELESS_MODE_PIN) == LOW) {
     transmitMode = true;
+
+    // turn on the blue light
     digitalWrite(RED_PIN, HIGH);
+    digitalWrite(BLUE_PIN, LOW);
   }
 }
 
@@ -230,13 +216,11 @@ void SetupBLE() {
   sampleRateCharacteristics.setCallbacks(new SettingsUpdatedCallback());
 
   // Add BLE Characteristics and BLE Descriptor
-  dataService->addCharacteristic(&accelerometerCharacteristics);
-  dataService->addCharacteristic(&gyroscopeCharacteristics);
+  dataService->addCharacteristic(&imuCharacteristics);
   dataService->addCharacteristic(&sampleRateCharacteristics);
   
   // Start the service
   dataService->start();
- 
 
   // Start advertising
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
