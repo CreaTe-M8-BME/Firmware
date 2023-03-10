@@ -2,7 +2,12 @@
 // By Jonathan Matarazzi
 // May 5 2022
 #include<Wire.h>
-#include<BluetoothSerial.h>
+
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
 #include "Esp.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
@@ -10,8 +15,9 @@
 #include "esp_gap_bt_api.h"
 #include "driver\rtc_io.h"
 
-#define PAIRING_TIME 10000
-#define PAIR_BLINK_INTERVAL 250
+// BLE server name
+#define bleServerName "BME_IMU_0BE6"
+#define SERVICE_UUID "0ddf5c1d-d269-4b17-bd7f-33a8658f0b89"
 
 #define BLUE_PIN 13
 #define RED_PIN 12
@@ -22,7 +28,18 @@
 #define WIRED_MODE_PIN 33
 #define WIRELESS_MODE_PIN 25
 
-BluetoothSerial SerialBT;
+// Timer variables
+unsigned long lastTime = 0;
+unsigned long samplingDelay = 5000;
+
+bool deviceConnected = false;
+
+// Test Characteristic and Descriptor
+BLECharacteristic accelerometerCharacteristics("00000000-0000-0000-0000-000000000001", BLECharacteristic::PROPERTY_NOTIFY);
+BLECharacteristic gyroscopeCharacteristics("00000000-0000-0000-0000-000000000002", BLECharacteristic::PROPERTY_NOTIFY);
+BLECharacteristic sampleRateCharacteristics("00000000-0000-0000-0000-000000000003", BLECharacteristic::PROPERTY_WRITE);
+BLEDescriptor dataDescriptor(BLEUUID((uint16_t)0x2902), BLECharacteristic::PROPERTY_READ);
+
 
 const int MPU_addr = 0x68; // I2C address of the MPU-6050
 byte output[12];
@@ -31,6 +48,25 @@ bool transmitMode;
 
 TaskHandle_t readIMU, clientHandler, pairingTask;
 
+
+// Setup callbacks onConnect and onDisconnect
+class MyServerCallbacks: public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+  };
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+  }
+};
+
+// Setup data recieved callback
+class SettingsUpdatedCallback: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValue = pCharacteristic->getValue();
+      
+      Serial.println(rxValue.c_str()); //TODO FIX
+   }
+};
 
 void setup() {
   Serial.begin(115200);
@@ -65,11 +101,9 @@ void setup() {
   Wire.write(0b00011000);
   Wire.endTransmission(false);
 
-  //Enable bluetooth
-  startBluetoothStack();
-  SerialBT.begin("WirelessIMU-" + getBluetoothAddress());
-  discoverable(false);
-
+  // Setup Bluetooth
+  SetupBLE();
+  
   //Create repeating tasks
   xTaskCreatePinnedToCore(
     readIMUCode,
@@ -88,16 +122,6 @@ void setup() {
     NULL,
     1,
     &clientHandler,
-    1
-  );
-
-  xTaskCreatePinnedToCore(
-    pairingCode,
-    "ParingTask",
-    10000,
-    NULL,
-    1,
-    &pairingTask,
     1
   );
 }
@@ -122,11 +146,31 @@ void readIMUCode( void * parameter) {
 void clientHandlerCode ( void * parameters) {
   for (;;) {
     if (transmitMode) {
-      if (SerialBT.available() > 0) {
-        SerialBT.read();
-        SerialBT.write(output, 12);
+      if (deviceConnected && (millis() - lastTime) > samplingDelay) {
+        // char vals[24];
+        // char sendValue[3];
+        //  for (int i = 0; i < 6; i++) {
+          
+        //   Serial.print(i);
+        //   Serial.print(" value: ");
+        //   Serial.print(output[i]);
+        //   Serial.print(" - ");
+        //   sprintf(sendValue, "%3.03d", output[i]);
+        //   Serial.println(sendValue);
+        //   strcat(vals, sendValue);
+        // }
+
+        // Serial.print("Final: ");
+        // Serial.println(vals);
+        // Set Tests Characteristic value and notify connected client
+        accelerometerCharacteristics.setValue(output, 12);
+        
+        accelerometerCharacteristics.notify();
+        // strcpy(vals, "");
+        lastTime = millis();
       }
     } else {
+      // Wired mode
       if (Serial.available() > 0) {
         Serial.read();
         Serial.read();
@@ -141,44 +185,9 @@ void clientHandlerCode ( void * parameters) {
   }
 }
 
-void pairingCode ( void * parameters) {
-  for (;;) {
-    if (transmitMode == true) {
-      if (digitalRead(PAIR_PIN) == LOW) {
-        discoverable(true);
-        for (int i = 0; i < (PAIRING_TIME / PAIR_BLINK_INTERVAL); i++) {
-          digitalWrite(BLUE_PIN, LOW);
-          delay(PAIR_BLINK_INTERVAL / 2);
-          digitalWrite(BLUE_PIN, HIGH);
-          delay(PAIR_BLINK_INTERVAL / 2);
-        }
-        discoverable(false);
-      } else {
-        digitalWrite(BLUE_PIN, LOW);
-      }
-    } else {
-      digitalWrite(BLUE_PIN, HIGH);
-    }
-  }
-}
-
-void startBluetoothStack() {
-  btStart();
-  esp_bluedroid_init();
-  esp_bluedroid_enable();
-}
-
-String getBluetoothAddress() {
-  const uint8_t* address = esp_bt_dev_get_address();
-  String addrString = String();
-  for (int i = 0; i < 2; i++) {
-    char str[3];
-    sprintf(str, "%02X", (int)address[i+4]);
-    addrString = String(addrString + str);
-  }
-  return addrString;
-}
-
+/**
+ * Puts the ESP into a sleep state
+ */
 void startSleep() {
   Wire.beginTransmission(MPU_addr);
   Wire.write(0x6B);
@@ -191,16 +200,9 @@ void startSleep() {
   esp_deep_sleep_start();
 }
 
-void discoverable(bool dis) {
-  if (dis) {
-    esp_bt_gap_set_scan_mode(ESP_BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE);
-  } else {
-    esp_bt_gap_set_scan_mode(ESP_BT_SCAN_MODE_CONNECTABLE);
-  }
-}
-
 
 void loop() {
+  // Check de state of de button
   if (digitalRead(POWER_OFF_PIN) == LOW) {
     startSleep();
   } else if (digitalRead(WIRED_MODE_PIN) == LOW) {
@@ -211,4 +213,35 @@ void loop() {
     transmitMode = true;
     digitalWrite(RED_PIN, HIGH);
   }
+}
+
+void SetupBLE() {
+  Serial.println("Setting up BLE..");
+  // Create the BLE Device
+  BLEDevice::init(bleServerName);
+
+  // Create the BLE Server
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *dataService = pServer->createService(SERVICE_UUID);
+  
+  sampleRateCharacteristics.setCallbacks(new SettingsUpdatedCallback());
+
+  // Add BLE Characteristics and BLE Descriptor
+  dataService->addCharacteristic(&accelerometerCharacteristics);
+  dataService->addCharacteristic(&gyroscopeCharacteristics);
+  dataService->addCharacteristic(&sampleRateCharacteristics);
+  
+  // Start the service
+  dataService->start();
+ 
+
+  // Start advertising
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pServer->getAdvertising()->start();
+
+  Serial.println("Waiting on client...");
 }
