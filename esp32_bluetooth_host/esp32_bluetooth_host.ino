@@ -13,7 +13,7 @@
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
-#include "driver\rtc_io.h"
+// #include "driver\rtc_io.h"
 
 // BLE server name
 #define bleServerName "BME_IMU_0BE6"
@@ -33,13 +33,18 @@ const uint16_t MAX_SAMPLING_DELAY = 2000;
 
 // Timer variables
 unsigned long lastTime = 0;
-unsigned long samplingDelay = 5000;
+unsigned long samplingDelay = 1000;
 
 bool deviceConnected = false;
 
 // Test Characteristic and Descriptor
-BLECharacteristic imuCharacteristics("00000000-0000-0000-0000-000000000001", BLECharacteristic::PROPERTY_NOTIFY);
-BLECharacteristic sampleRateCharacteristics("00000000-0000-0000-0000-000000000002", BLECharacteristic::PROPERTY_WRITE);
+BLECharacteristic imuCharacteristics("64b83770-6b12-4a54-b31a-e007306132bd", BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE);
+BLEDescriptor imuDescriptionDescriptor(BLEUUID((uint16_t)0x2901));
+BLE2902 *imu2902 = new BLE2902();
+BLECharacteristic sampleRateCharacteristics("3003aac7-d843-4e55-9d89-3f93020cc9ee", BLECharacteristic::PROPERTY_WRITE);
+BLEDescriptor sampleRateDescriptionDescriptor(BLEUUID((uint16_t)0x2901));
+
+BLEServer *pServer;
 
 const int MPU_addr = 0x68; // I2C address of the MPU-6050
 byte output[12];
@@ -53,9 +58,12 @@ TaskHandle_t readIMU, clientHandler, pairingTask;
 class MyServerCallbacks: public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
+    Serial.println("Client connected");
   };
   void onDisconnect(BLEServer* pServer) {
     deviceConnected = false;
+    Serial.println("Client disconnected");
+    pServer->getAdvertising()->start();
   }
 };
 
@@ -171,7 +179,7 @@ void clientHandlerCode ( void * parameters) {
         Serial.read();
         Serial.read();
         for (int i = 0; i < 6; i++) {
-          uint16_t value = (output[i*2] << 8) + output[i*2+1];
+          int16_t value = (output[i*2] << 8) + output[i*2+1];
           Serial.print(i);
           Serial.print(" value: ");
           Serial.println(value);
@@ -222,7 +230,7 @@ void SetupBLE() {
   BLEDevice::init(bleServerName);
 
   // Create the BLE Server
-  BLEServer *pServer = BLEDevice::createServer();
+  pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
   // Create the BLE Service
@@ -232,7 +240,12 @@ void SetupBLE() {
 
   // Add BLE Characteristics and BLE Descriptor
   dataService->addCharacteristic(&imuCharacteristics);
+  imuDescriptionDescriptor.setValue("uint16_t acc_x, uint16_t acc_y, uint16_t acc_z, uint16_t gyr_x, uint16_t gyr_y, uint16_t gyr_z");
+  imuCharacteristics.addDescriptor(&imuDescriptionDescriptor);
+  imuCharacteristics.addDescriptor(imu2902);
   dataService->addCharacteristic(&sampleRateCharacteristics);
+  sampleRateDescriptionDescriptor.setValue("int16_t delay_val");
+  sampleRateCharacteristics.addDescriptor(&sampleRateDescriptionDescriptor);
   
   // Start the service
   dataService->start();
