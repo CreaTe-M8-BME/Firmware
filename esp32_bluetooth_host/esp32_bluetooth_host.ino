@@ -78,9 +78,9 @@ class SettingsUpdatedCallback: public BLECharacteristicCallbacks {
       uint8_t* rxValue = pCharacteristic->getData();
 
       ByteArrayToInt converter;
-      converter.array[0] = rxValue[0];
-      converter.array[1] = rxValue[1];
-      Serial.print("Second: ");
+      converter.array[0] = rxValue[1];
+      converter.array[1] = rxValue[0];
+      Serial.print("Sampling delay: ");
       Serial.println(converter.integer);
       
       // limit the sampling delay to the max and min value
