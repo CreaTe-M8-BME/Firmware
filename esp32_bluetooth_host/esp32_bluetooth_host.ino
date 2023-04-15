@@ -16,7 +16,7 @@
 // #include "driver\rtc_io.h"
 
 // BLE server name
-#define bleServerName "BME_IMU_0BE6"
+#define BLE_NAME_PREFIX "BME_IMU_"
 #define SERVICE_UUID "0ddf5c1d-d269-4b17-bd7f-33a8658f0b89"
 
 #define BLUE_PIN 12
@@ -172,6 +172,12 @@ void clientHandlerCode ( void * parameters) {
         
         imuCharacteristics.notify();
         lastTime = millis();
+        Serial.print("Sent data: ");
+        for (int i = 0; i < 6; i++) {
+          Serial.print((int)(output[i*2] | output[i*2+1] << 8));
+          Serial.print(", ");
+        }
+        Serial.println();
       }
     } else {
       // Wired mode
@@ -227,7 +233,8 @@ void loop() {
 void SetupBLE() {
   Serial.println("Setting up BLE..");
   // Create the BLE Device
-  BLEDevice::init(bleServerName);
+  // Serial.println(getBluetoothAddress());
+  BLEDevice::init(BLE_NAME_PREFIX+getBluetoothAddress());
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -256,4 +263,21 @@ void SetupBLE() {
   pServer->getAdvertising()->start();
 
   Serial.println("Waiting on client...");
+}
+
+std::string getBluetoothAddress() {
+  btStart();
+  esp_bluedroid_init();
+  esp_bluedroid_enable();
+  const uint8_t* address = esp_bt_dev_get_address();
+  std::string addrString = std::string();
+  for (int i = 0; i < 2; i++) {
+    char str[3];
+    sprintf(str, "%02X", (int)address[i+4]);
+    addrString = std::string(addrString + str);
+  }
+  esp_bluedroid_disable();
+  esp_bluedroid_deinit();
+  btStop();
+  return addrString;
 }
