@@ -28,7 +28,7 @@
 #define WIRED_MODE_PIN 33
 #define WIRELESS_MODE_PIN 25
 
-const uint16_t MIN_SAMPLING_DELAY = 10;
+const uint16_t MIN_SAMPLING_DELAY = 5;
 const uint16_t MAX_SAMPLING_DELAY = 2000;
 
 // Timer variables
@@ -166,12 +166,13 @@ void readIMUCode( void * parameter) {
 void clientHandlerCode ( void * parameters) {
   for (;;) {
     if (transmitMode) {
-      if (deviceConnected && (millis() - lastTime) > samplingDelay) {
+      unsigned long curTime = millis();
+      if (deviceConnected && (curTime - lastTime) >= samplingDelay) {
         // Set Characteristic value and notify connected client
         imuCharacteristics.setValue(output, 12);
         
         imuCharacteristics.notify();
-        lastTime = millis();
+        lastTime = curTime;
         Serial.print("Sent data: ");
         for (int i = 0; i < 6; i++) {
           Serial.print((int)(output[i*2] | output[i*2+1] << 8));
