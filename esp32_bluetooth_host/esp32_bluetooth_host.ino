@@ -1,7 +1,10 @@
 // MPU-6050 Wireless Bluetooth Module
 // By Jonathan Matarazzi
 // May 5 2022
-#include<Wire.h>
+#define VERSION "1.0.0"
+
+#include <Wire.h>
+#include <math.h>
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -9,6 +12,7 @@
 #include <BLE2902.h>
 
 #include "Esp.h"
+#include "esp_timer.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
@@ -18,90 +22,90 @@
 // BLE server name
 #define BLE_NAME_PREFIX "BME_IMU_"
 #define SERVICE_UUID "0ddf5c1d-d269-4b17-bd7f-33a8658f0b89"
+#define IMU_UUID "64b83770-6b12-4a54-b31a-e007306132bd"
+#define SAMPLE_RATE_UUID "3003aac7-d843-4e55-9d89-3f93020cc9ee"
+#define VERSION_UUID "2980b86f-dacb-43b9-847c-30c586224943"
 
-#define BLUE_PIN 12
-#define RED_PIN 13
+#define LED_R 27
+#define LED_G 13
+#define LED_B 12
 #define MPU_POWER_PIN 19
-#define PAIR_PIN 26
 #define POWER_OFF_PIN 32
 #define POWER_OFF_PIN_GPIO GPIO_NUM_32
-#define WIRED_MODE_PIN 33
-#define WIRELESS_MODE_PIN 25
+#define POWER_ON_PIN 33
 
-const uint16_t MIN_SAMPLING_DELAY = 5;
-const uint16_t MAX_SAMPLING_DELAY = 2000;
+#define MIN_SAMPLING_FREQUENCY 1
+#define MAX_SAMPLING_FREQUENCY 200
+
+#define TIMER_PRECISION 1000
 
 // Timer variables
+hw_timer_t *blTimer = timerBegin(0, 1000000, true);
 unsigned long lastTime = 0;
-unsigned long samplingDelay = 1000;
+uint16_t frequency = 100;
+unsigned long samplingDelay = 10;
 
 bool deviceConnected = false;
 
 // Test Characteristic and Descriptor
-BLECharacteristic imuCharacteristics("64b83770-6b12-4a54-b31a-e007306132bd", BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE);
+BLECharacteristic imuCharacteristics(IMU_UUID, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE);
 BLEDescriptor imuDescriptionDescriptor(BLEUUID((uint16_t)0x2901));
 BLE2902 *imu2902 = new BLE2902();
-BLECharacteristic sampleRateCharacteristics("3003aac7-d843-4e55-9d89-3f93020cc9ee", BLECharacteristic::PROPERTY_WRITE);
+BLECharacteristic sampleRateCharacteristics(SAMPLE_RATE_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ);
 BLEDescriptor sampleRateDescriptionDescriptor(BLEUUID((uint16_t)0x2901));
+BLECharacteristic versionCharacteristic(VERSION_UUID, BLECharacteristic::PROPERTY_READ);
+BLEDescriptor versionDescriptionDescriptor(BLEUUID((uint16_t)0x2901));
 
 BLEServer *pServer;
 
-const int MPU_addr = 0x68; // I2C address of the MPU-6050
+const int MPU_addr = 0x68;  // I2C address of the MPU-6050
 byte output[12];
 
-bool transmitMode;
 
 TaskHandle_t readIMU, clientHandler, pairingTask;
 
 
 // Setup callbacks onConnect and onDisconnect
-class MyServerCallbacks: public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer *pServer) {
     deviceConnected = true;
     Serial.println("Client connected");
   };
-  void onDisconnect(BLEServer* pServer) {
+  void onDisconnect(BLEServer *pServer) {
     deviceConnected = false;
     Serial.println("Client disconnected");
     pServer->getAdvertising()->start();
   }
 };
 
-union ByteArrayToInt {
-  byte array[2];
-  uint16_t integer;
-};
-
 // Setup data recieved callback
-class SettingsUpdatedCallback: public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic *pCharacteristic) {
-      uint8_t* rxValue = pCharacteristic->getData();
+class SettingsUpdatedCallback : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    uint8_t *rxValue = pCharacteristic->getData();
+    uint16_t value = (rxValue[1] << 8) | rxValue[0];
 
-      ByteArrayToInt converter;
-      converter.array[0] = rxValue[1];
-      converter.array[1] = rxValue[0];
-      Serial.print("Sampling delay: ");
-      Serial.println(converter.integer);
-      
-      // limit the sampling delay to the max and min value
-      samplingDelay = std::max(std::min(converter.integer, MAX_SAMPLING_DELAY), MIN_SAMPLING_DELAY);
-   }
+    // limit the sampling delay to the max and min value
+    int reqFrequency = std::max(std::min(value, (uint16_t)MAX_SAMPLING_FREQUENCY), (uint16_t)MIN_SAMPLING_FREQUENCY);
+    samplingDelay = round((float)TIMER_PRECISION / (float)reqFrequency);
+    frequency = TIMER_PRECISION / samplingDelay;
+    pCharacteristic->setValue(frequency);
+  }
 };
 
 void setup() {
   Serial.begin(115200);
 
   //Set pinmodes for slider en button
-  pinMode(BLUE_PIN, OUTPUT);
-  pinMode(RED_PIN, OUTPUT);
+  pinMode(LED_R, OUTPUT);
+  pinMode(LED_G, OUTPUT);
+  pinMode(LED_B, OUTPUT);
   pinMode(MPU_POWER_PIN, OUTPUT);
-  pinMode(PAIR_PIN, INPUT_PULLUP);
   pinMode(POWER_OFF_PIN, INPUT_PULLUP);
-  pinMode(WIRED_MODE_PIN, INPUT_PULLUP);
-  pinMode(WIRELESS_MODE_PIN, INPUT_PULLUP);
+  pinMode(POWER_ON_PIN, INPUT_PULLUP);
 
-  digitalWrite(BLUE_PIN, HIGH);
-  digitalWrite(RED_PIN, HIGH);
+  digitalWrite(LED_R, LOW);
+  digitalWrite(LED_G, LOW);
+  digitalWrite(LED_B, LOW);
   digitalWrite(MPU_POWER_PIN, HIGH);
 
   delay(100);
@@ -123,7 +127,7 @@ void setup() {
 
   // Setup Bluetooth
   SetupBLE();
-  
+
   //Create repeating tasks
   xTaskCreatePinnedToCore(
     readIMUCode,
@@ -132,8 +136,7 @@ void setup() {
     NULL,
     0,
     &readIMU,
-    0
-  );
+    0);
 
   xTaskCreatePinnedToCore(
     clientHandlerCode,
@@ -142,16 +145,15 @@ void setup() {
     NULL,
     1,
     &clientHandler,
-    1
-  );
+    1);
 }
 
-void readIMUCode( void * parameter) {
+void readIMUCode(void *parameter) {
   for (;;) {
     Wire.beginTransmission(MPU_addr);
     Wire.write(0x3B);  // starting with register 0x3B (ACCEL_XOUT_H)
     Wire.endTransmission(false);
-    Wire.requestFrom(MPU_addr, 14, true); // request a total of 14 registers
+    Wire.requestFrom(MPU_addr, 14, true);  // request a total of 14 registers
     for (int i = 0; i < 14; i++) {
       byte input = Wire.read();
       if (i < 6) {
@@ -163,35 +165,15 @@ void readIMUCode( void * parameter) {
   }
 }
 
-void clientHandlerCode ( void * parameters) {
+void clientHandlerCode(void *parameters) {
   for (;;) {
-    if (transmitMode) {
-      unsigned long curTime = millis();
-      if (deviceConnected && (curTime - lastTime) >= samplingDelay) {
-        // Set Characteristic value and notify connected client
-        imuCharacteristics.setValue(output, 12);
-        
-        imuCharacteristics.notify();
-        lastTime = curTime;
-        Serial.print("Sent data: ");
-        for (int i = 0; i < 6; i++) {
-          Serial.print((int)(output[i*2] | output[i*2+1] << 8));
-          Serial.print(", ");
-        }
-        Serial.println();
-      }
-    } else {
-      // Wired mode
-      if (Serial.available() > 0) {
-        Serial.read();
-        Serial.read();
-        for (int i = 0; i < 6; i++) {
-          int16_t value = (output[i*2] << 8) + output[i*2+1];
-          Serial.print(i);
-          Serial.print(" value: ");
-          Serial.println(value);
-        }
-      }
+    unsigned long curTime = millis();
+    if (deviceConnected && (curTime - lastTime) >= samplingDelay) {
+      // Set Characteristic value and notify connected client
+      imuCharacteristics.setValue(output, 12);
+
+      imuCharacteristics.notify();
+      lastTime = curTime;
     }
   }
 }
@@ -205,8 +187,9 @@ void startSleep() {
   Wire.write(0b01001000);
   Wire.endTransmission(false);
   digitalWrite(MPU_POWER_PIN, LOW);
-  digitalWrite(BLUE_PIN, HIGH);
-  digitalWrite(RED_PIN, HIGH);
+  digitalWrite(LED_R, LOW);
+  digitalWrite(LED_G, LOW);
+  digitalWrite(LED_B, LOW);
   esp_sleep_enable_ext0_wakeup(POWER_OFF_PIN_GPIO, 1);
   esp_deep_sleep_start();
 }
@@ -216,26 +199,19 @@ void loop() {
   // Check de state of de button
   if (digitalRead(POWER_OFF_PIN) == LOW) {
     startSleep();
-  } else if (digitalRead(WIRED_MODE_PIN) == LOW) {
-    transmitMode = false;
-
-    // turn on the red light
-    digitalWrite(BLUE_PIN, HIGH);
-    digitalWrite(RED_PIN, LOW);
-  } else if (digitalRead(WIRELESS_MODE_PIN) == LOW) {
-    transmitMode = true;
+  } else if (digitalRead(POWER_ON_PIN) == LOW) {
 
     // turn on the blue light
-    digitalWrite(RED_PIN, HIGH);
-    digitalWrite(BLUE_PIN, LOW);
+  digitalWrite(LED_R, LOW);
+  digitalWrite(LED_G, LOW);
+  digitalWrite(LED_B, HIGH);
   }
 }
 
 void SetupBLE() {
   Serial.println("Setting up BLE..");
   // Create the BLE Device
-  // Serial.println(getBluetoothAddress());
-  BLEDevice::init(BLE_NAME_PREFIX+getBluetoothAddress());
+  BLEDevice::init(BLE_NAME_PREFIX + getBluetoothAddress());
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -243,7 +219,7 @@ void SetupBLE() {
 
   // Create the BLE Service
   BLEService *dataService = pServer->createService(SERVICE_UUID);
-  
+
   sampleRateCharacteristics.setCallbacks(new SettingsUpdatedCallback());
 
   // Add BLE Characteristics and BLE Descriptor
@@ -252,9 +228,13 @@ void SetupBLE() {
   imuCharacteristics.addDescriptor(&imuDescriptionDescriptor);
   imuCharacteristics.addDescriptor(imu2902);
   dataService->addCharacteristic(&sampleRateCharacteristics);
-  sampleRateDescriptionDescriptor.setValue("int16_t delay_val");
+  sampleRateDescriptionDescriptor.setValue("int16_t sample_frequency");
   sampleRateCharacteristics.addDescriptor(&sampleRateDescriptionDescriptor);
-  
+  dataService->addCharacteristic(&versionCharacteristic);
+  versionDescriptionDescriptor.setValue("Firmware version");
+  versionCharacteristic.addDescriptor(&versionDescriptionDescriptor);
+  versionCharacteristic.setValue(VERSION);
+
   // Start the service
   dataService->start();
 
@@ -270,11 +250,11 @@ std::string getBluetoothAddress() {
   btStart();
   esp_bluedroid_init();
   esp_bluedroid_enable();
-  const uint8_t* address = esp_bt_dev_get_address();
+  const uint8_t *address = esp_bt_dev_get_address();
   std::string addrString = std::string();
   for (int i = 0; i < 2; i++) {
     char str[3];
-    sprintf(str, "%02X", (int)address[i+4]);
+    sprintf(str, "%02X", (int)address[i + 4]);
     addrString = std::string(addrString + str);
   }
   esp_bluedroid_disable();
