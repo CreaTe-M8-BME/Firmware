@@ -197,7 +197,6 @@ void startSleep() {
   digitalWrite(LED_B, LOW);
   esp_sleep_enable_ext0_wakeup(POWER_OFF_PIN_GPIO, 1);
   esp_deep_sleep_start();
-  esp_hibernation_start();
 }
 
 
@@ -205,9 +204,9 @@ void loop() {
   // Check de state of de button
   bool powerOnPinState = digitalRead(POWER_ON_PIN) == LOW;
   bool powerOffPinState = digitalRead(POWER_OFF_PIN) == LOW;
-  if (powerOnPinState && powerOffPinState) {
+  if (!powerOnPinState && !powerOffPinState) {
     unsigned long curTime = millis();
-    if (curTime - discoPrevTime <= DISCO_INTERVAL) {
+    if (curTime - discoPrevTime >= DISCO_INTERVAL) {
       discoPrevTime = curTime;
       discoState = (discoState + 1) % 3;
       digitalWrite(LED_R, discoState == 0 ? HIGH : LOW);
