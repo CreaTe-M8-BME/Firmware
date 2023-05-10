@@ -39,6 +39,11 @@
 
 #define TIMER_PRECISION 1000
 
+#define DISCO_INTERVAL 100
+
+int discoState = 0;
+unsigned long discoPrevTime = 0;
+
 // Timer variables
 hw_timer_t *blTimer = timerBegin(0, 1000000, true);
 unsigned long lastTime = 0;
@@ -192,19 +197,30 @@ void startSleep() {
   digitalWrite(LED_B, LOW);
   esp_sleep_enable_ext0_wakeup(POWER_OFF_PIN_GPIO, 1);
   esp_deep_sleep_start();
+  esp_hibernation_start();
 }
 
 
 void loop() {
   // Check de state of de button
-  if (digitalRead(POWER_OFF_PIN) == LOW) {
+  bool powerOnPinState = digitalRead(POWER_ON_PIN) == LOW;
+  bool powerOffPinState = digitalRead(POWER_OFF_PIN) == LOW;
+  if (powerOnPinState && powerOffPinState) {
+    unsigned long curTime = millis();
+    if (curTime - discoPrevTime <= DISCO_INTERVAL) {
+      discoPrevTime = curTime;
+      discoState = (discoState + 1) % 3;
+      digitalWrite(LED_R, discoState == 0 ? HIGH : LOW);
+      digitalWrite(LED_G, discoState == 1 ? HIGH : LOW);
+      digitalWrite(LED_B, discoState == 2 ? HIGH : LOW);
+    }
+  } else if (powerOffPinState) {
     startSleep();
-  } else if (digitalRead(POWER_ON_PIN) == LOW) {
-
+  } else if (powerOnPinState) {
     // turn on the blue light
-  digitalWrite(LED_R, LOW);
-  digitalWrite(LED_G, LOW);
-  digitalWrite(LED_B, HIGH);
+    digitalWrite(LED_R, LOW);
+    digitalWrite(LED_G, LOW);
+    digitalWrite(LED_B, HIGH);
   }
 }
 
