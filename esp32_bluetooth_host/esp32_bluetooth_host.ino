@@ -1,7 +1,7 @@
 // MPU-6050 Wireless Bluetooth Module
 // By Jonathan Matarazzi
 // May 5 2022
-#define VERSION "1.0.0"
+#define VERSION "1.0.1"
 
 #include <Wire.h>
 #include <math.h>
