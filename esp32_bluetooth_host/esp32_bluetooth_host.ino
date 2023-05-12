@@ -1,7 +1,7 @@
 // MPU-6050 Wireless Bluetooth Module
 // By Jonathan Matarazzi
 // May 5 2022
-#define VERSION "1.0.0"
+#define VERSION "1.0.1"
 
 #include <Wire.h>
 #include <math.h>
@@ -38,6 +38,11 @@
 #define MAX_SAMPLING_FREQUENCY 200
 
 #define TIMER_PRECISION 1000
+
+#define DISCO_INTERVAL 100
+
+int discoState = 0;
+unsigned long discoPrevTime = 0;
 
 // Timer variables
 hw_timer_t *blTimer = timerBegin(0, 1000000, true);
@@ -197,14 +202,24 @@ void startSleep() {
 
 void loop() {
   // Check de state of de button
-  if (digitalRead(POWER_OFF_PIN) == LOW) {
+  bool powerOnPinState = digitalRead(POWER_ON_PIN) == LOW;
+  bool powerOffPinState = digitalRead(POWER_OFF_PIN) == LOW;
+  if (!powerOnPinState && !powerOffPinState) {
+    unsigned long curTime = millis();
+    if (curTime - discoPrevTime >= DISCO_INTERVAL) {
+      discoPrevTime = curTime;
+      discoState = (discoState + 1) % 3;
+      digitalWrite(LED_R, discoState == 0 ? HIGH : LOW);
+      digitalWrite(LED_G, discoState == 1 ? HIGH : LOW);
+      digitalWrite(LED_B, discoState == 2 ? HIGH : LOW);
+    }
+  } else if (powerOffPinState) {
     startSleep();
-  } else if (digitalRead(POWER_ON_PIN) == LOW) {
-
+  } else if (powerOnPinState) {
     // turn on the blue light
-  digitalWrite(LED_R, LOW);
-  digitalWrite(LED_G, LOW);
-  digitalWrite(LED_B, HIGH);
+    digitalWrite(LED_R, LOW);
+    digitalWrite(LED_G, LOW);
+    digitalWrite(LED_B, HIGH);
   }
 }
 
