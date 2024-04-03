@@ -1,7 +1,9 @@
 // MPU-6050 Wireless Bluetooth Module
 // By Jonathan Matarazzi
 // May 5 2022
-#define VERSION "1.0.1"
+// Updated by Frank Bosman
+// April 3 2024
+#define VERSION "1.0.2"
 
 #include <Wire.h>
 #include <math.h>
@@ -70,9 +72,7 @@ BLEServer *pServer;
 const int MPU_addr = 0x68;  // I2C address of the MPU-6050
 byte output[12];
 
-
 TaskHandle_t readIMU, clientHandler, pairingTask;
-
 
 // Setup callbacks onConnect and onDisconnect
 class MyServerCallbacks : public BLEServerCallbacks {
