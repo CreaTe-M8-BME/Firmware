@@ -40,9 +40,13 @@
 #define TIMER_PRECISION 1000
 
 #define DISCO_INTERVAL 100
+#define NOT_CONNECTED_INTERVAL 500
 
+// Device mode variables
 int discoState = 0;
 unsigned long discoPrevTime = 0;
+unsigned long notConnectedPrevTime = 0;
+bool notConnectedLEDActive = false;
 
 // Timer variables
 hw_timer_t *blTimer = timerBegin(0, 1000000, true);
@@ -204,7 +208,9 @@ void loop() {
   // Check de state of de button
   bool powerOnPinState = digitalRead(POWER_ON_PIN) == LOW;
   bool powerOffPinState = digitalRead(POWER_OFF_PIN) == LOW;
-  if (!powerOnPinState && !powerOffPinState) {
+
+  // Switch between the three different modes, Disco, off/sleep and active
+  if (!powerOnPinState && !powerOffPinState) {  // Disco mode
     unsigned long curTime = millis();
     if (curTime - discoPrevTime >= DISCO_INTERVAL) {
       discoPrevTime = curTime;
@@ -213,13 +219,27 @@ void loop() {
       digitalWrite(LED_G, discoState == 1 ? HIGH : LOW);
       digitalWrite(LED_B, discoState == 2 ? HIGH : LOW);
     }
-  } else if (powerOffPinState) {
+  } else if (powerOffPinState) {  
+    // Sleep mode, turn device off
     startSleep();
   } else if (powerOnPinState) {
-    // turn on the blue light
+    // Active mode, show a indicator light
     digitalWrite(LED_R, LOW);
-    digitalWrite(LED_G, LOW);
-    digitalWrite(LED_B, HIGH);
+    if (deviceConnected) {
+      // Device connected, show a green LED
+      digitalWrite(LED_G, HIGH);
+      digitalWrite(LED_B, LOW);
+    } else {
+      // No device connected, show a blinking blue LED
+      unsigned long curTime = millis();
+      if (curTime - notConnectedPrevTime >= NOT_CONNECTED_INTERVAL) {
+        notConnectedPrevTime = curTime;
+        notConnectedLEDActive = !notConnectedLEDActive;
+      }
+
+      digitalWrite(LED_G, LOW);
+      digitalWrite(LED_B, notConnectedLEDActive ? HIGH : LOW);
+    }
   }
 }
 
