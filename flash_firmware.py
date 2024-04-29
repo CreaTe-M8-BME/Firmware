@@ -1,0 +1,2 @@
+import os
+os.system("esptool.py -b 460800 --before default_reset --after hard_reset --chip esp32 write_flash --flash_mode dio --flash_size detect --flash_freq 40m 0x1000 ./esp32_bluetooth_host/build/esp32.esp32.lolin32/esp32_bluetooth_host.ino.bootloader.bin 0x8000 ./esp32_bluetooth_host/build/esp32.esp32.lolin32/./esp32_bluetooth_host.ino.partitions.bin 0x10000 ./esp32_bluetooth_host/build/esp32.esp32.lolin32/./esp32_bluetooth_host.ino.bin")
