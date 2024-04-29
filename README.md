@@ -9,7 +9,7 @@ No additional libraries are required. You only need to make sure you have the la
 If you want to flash multiple IMUs quickly without recompiling the firmware every time in the Arduino IDE, you can use the Python scripts provided as follows:
 
 1. Run the setup script to install esptool and setuptools with `python setup_esptool.py`.
-2. In your Arduino IDE, export your sketch as a series of .bin files with Sketch -> Export Compiled Library (you only need to do this once every time your code is updated).
+2. In your Arduino IDE, export your sketch as a series of .bin files with `Sketch` -> `Export Compiled Binary` (you only need to do this once every time your code is updated).
 3. Connect your IMU with a USB cable.
 4. Run `python flash_firmware.py` to flash your sensor.
 
