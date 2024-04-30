@@ -4,7 +4,7 @@ Firmware for the [CreaTeBME](https://github.com/CreaTe-M8-BME/CreaTeBME) sensors
 
 No additional libraries are required. You only need to make sure you have the latest version of the esp32 board manager installed.
 
-## Flashing firmware without needing to compile each time
+## Flashing firmware
 
 If you want to flash multiple IMUs quickly without recompiling the firmware every time in the Arduino IDE, you can use the Python scripts provided as follows:
 
@@ -13,5 +13,5 @@ If you want to flash multiple IMUs quickly without recompiling the firmware ever
 3. Connect your IMU with a USB cable.
 4. Run `python flash_firmware.py` to flash your sensor.
 
-> [!NOTE]
-> If you get an error regarding the bootloader, make sure to update your esp32 boards manager and recompile the .bin file
+> [!WARNING]
+> Make sure you use version `2.0.0` of the `esp32` boards manager by Espressif. Earlier versions do not compile the firmware correctly and newer versions have a bug with the `wire` library that prevents the IMU from working correctly.
