@@ -14,4 +14,4 @@ If you want to flash multiple IMUs quickly without recompiling the firmware ever
 4. Run `python flash_firmware.py` to flash your sensor.
 
 > [!WARNING]
-> Make sure you use version `2.0.0` of the `esp32` boards manager by Espressif. Earlier versions do not compile the firmware correctly and newer versions have a bug with the `wire` library that prevents the IMU from working correctly.
+> Make sure you use version `2.0.0` of the `esp32` boards manager by Espressif. Earlier versions do not compile the firmware correctly and newer versions have a bug with the `wire` library that prevents the IMU from working correctly. [Installation guide.](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html)
