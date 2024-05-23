@@ -37,7 +37,7 @@
 #define MIN_SAMPLING_FREQUENCY 1
 #define MAX_SAMPLING_FREQUENCY 200
 
-#define TIMER_PRECISION 1000
+#define TIMER_PRECISION 1000000
 
 #define DISCO_INTERVAL 100
 
@@ -74,6 +74,7 @@ TaskHandle_t readIMU, clientHandler, pairingTask;
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
     deviceConnected = true;
+    pServer->getAdvertising()->stop();
     Serial.println("Client connected");
   };
   void onDisconnect(BLEServer *pServer) {
@@ -93,6 +94,10 @@ class SettingsUpdatedCallback : public BLECharacteristicCallbacks {
     int reqFrequency = std::max(std::min(value, (uint16_t)MAX_SAMPLING_FREQUENCY), (uint16_t)MIN_SAMPLING_FREQUENCY);
     samplingDelay = round((float)TIMER_PRECISION / (float)reqFrequency);
     frequency = TIMER_PRECISION / samplingDelay;
+    Serial.print("Sampling delay:\t");
+    Serial.println(samplingDelay);
+    Serial.print("Sampling frequency:\t");
+    Serial.println(frequency);
     pCharacteristic->setValue(frequency);
   }
 };
@@ -172,13 +177,15 @@ void readIMUCode(void *parameter) {
 
 void clientHandlerCode(void *parameters) {
   for (;;) {
-    unsigned long curTime = millis();
-    if (deviceConnected && (curTime - lastTime) >= samplingDelay) {
-      // Set Characteristic value and notify connected client
-      imuCharacteristics.setValue(output, 12);
+    unsigned long curTime = esp_timer_get_time();
+    if ((curTime - lastTime) >= samplingDelay) {
+      if (deviceConnected) {
+        // Set Characteristic value and notify connected client
+        imuCharacteristics.setValue(output, 12);
 
-      imuCharacteristics.notify();
-      lastTime = curTime;
+        imuCharacteristics.notify();
+      }
+      lastTime += samplingDelay;
     }
   }
 }
