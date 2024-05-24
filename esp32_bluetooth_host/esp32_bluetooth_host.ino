@@ -1,7 +1,9 @@
 // MPU-6050 Wireless Bluetooth Module
 // By Jonathan Matarazzi
 // May 5 2022
-#define VERSION "1.0.1"
+// Updated by Frank Bosman
+// April 3 2024
+#define VERSION "1.0.2"
 
 #include <Wire.h>
 #include <math.h>
@@ -34,15 +36,26 @@
 #define POWER_OFF_PIN_GPIO GPIO_NUM_32
 #define POWER_ON_PIN 33
 
+// PWM properties
+#define PWM_FREQUENCY 5000
+#define PWN_CHANNEL_BLUE 0
+#define PWN_CHANNEL_GREEN 1
+#define PWM_RESOLUTION 8
+#define LED_BRIGHTNESS 50
+
 #define MIN_SAMPLING_FREQUENCY 1
 #define MAX_SAMPLING_FREQUENCY 200
 
 #define TIMER_PRECISION 1000
 
 #define DISCO_INTERVAL 100
+#define NOT_CONNECTED_INTERVAL 500
 
+// Device mode variables
 int discoState = 0;
 unsigned long discoPrevTime = 0;
+unsigned long notConnectedPrevTime = 0;
+bool notConnectedLEDActive = false;
 
 // Timer variables
 hw_timer_t *blTimer = timerBegin(0, 1000000, true);
@@ -66,9 +79,7 @@ BLEServer *pServer;
 const int MPU_addr = 0x68;  // I2C address of the MPU-6050
 byte output[12];
 
-
 TaskHandle_t readIMU, clientHandler, pairingTask;
-
 
 // Setup callbacks onConnect and onDisconnect
 class MyServerCallbacks : public BLEServerCallbacks {
@@ -102,15 +113,19 @@ void setup() {
 
   //Set pinmodes for slider en button
   pinMode(LED_R, OUTPUT);
-  pinMode(LED_G, OUTPUT);
-  pinMode(LED_B, OUTPUT);
   pinMode(MPU_POWER_PIN, OUTPUT);
   pinMode(POWER_OFF_PIN, INPUT_PULLUP);
   pinMode(POWER_ON_PIN, INPUT_PULLUP);
 
+  // Setup PWM for green and blue LEDs
+  ledcSetup(PWN_CHANNEL_GREEN, PWM_FREQUENCY, PWM_RESOLUTION);
+  ledcSetup(PWN_CHANNEL_BLUE, PWM_FREQUENCY, PWM_RESOLUTION);
+  ledcAttachPin(LED_G, PWN_CHANNEL_GREEN);
+  ledcAttachPin(LED_B, PWN_CHANNEL_BLUE);
+
   digitalWrite(LED_R, LOW);
-  digitalWrite(LED_G, LOW);
-  digitalWrite(LED_B, LOW);
+  ledcWrite(PWN_CHANNEL_GREEN, 0);
+  ledcWrite(PWN_CHANNEL_BLUE, 0);
   digitalWrite(MPU_POWER_PIN, HIGH);
 
   delay(100);
@@ -193,8 +208,8 @@ void startSleep() {
   Wire.endTransmission(false);
   digitalWrite(MPU_POWER_PIN, LOW);
   digitalWrite(LED_R, LOW);
-  digitalWrite(LED_G, LOW);
-  digitalWrite(LED_B, LOW);
+  ledcWrite(PWN_CHANNEL_GREEN, 0);
+  ledcWrite(PWN_CHANNEL_BLUE, 0);
   esp_sleep_enable_ext0_wakeup(POWER_OFF_PIN_GPIO, 1);
   esp_deep_sleep_start();
 }
@@ -204,22 +219,37 @@ void loop() {
   // Check de state of de button
   bool powerOnPinState = digitalRead(POWER_ON_PIN) == LOW;
   bool powerOffPinState = digitalRead(POWER_OFF_PIN) == LOW;
-  if (!powerOnPinState && !powerOffPinState) {
+
+  // Switch between the three different modes, Disco, off/sleep and active
+  if (!powerOnPinState && !powerOffPinState) {  // Disco mode
     unsigned long curTime = millis();
     if (curTime - discoPrevTime >= DISCO_INTERVAL) {
       discoPrevTime = curTime;
       discoState = (discoState + 1) % 3;
       digitalWrite(LED_R, discoState == 0 ? HIGH : LOW);
-      digitalWrite(LED_G, discoState == 1 ? HIGH : LOW);
-      digitalWrite(LED_B, discoState == 2 ? HIGH : LOW);
+      ledcWrite(PWN_CHANNEL_GREEN, discoState == 1 ? 255 : 0);
+      ledcWrite(PWN_CHANNEL_BLUE, discoState == 2 ? 255 : 0);
     }
-  } else if (powerOffPinState) {
+  } else if (powerOffPinState) {  
+    // Sleep mode, turn device off
     startSleep();
   } else if (powerOnPinState) {
-    // turn on the blue light
+    // Active mode, show a indicator light
     digitalWrite(LED_R, LOW);
-    digitalWrite(LED_G, LOW);
-    digitalWrite(LED_B, HIGH);
+    if (deviceConnected) {
+      // Device connected, show a green LED
+      ledcWrite(PWN_CHANNEL_GREEN, LED_BRIGHTNESS);
+      ledcWrite(PWN_CHANNEL_BLUE, 0);
+    } else {
+      // No device connected, show a blinking blue LED
+      unsigned long curTime = millis();
+      if (curTime - notConnectedPrevTime >= NOT_CONNECTED_INTERVAL) {
+        notConnectedPrevTime = curTime;
+        notConnectedLEDActive = !notConnectedLEDActive;
+      }
+      ledcWrite(PWN_CHANNEL_GREEN, 0);
+      ledcWrite(PWN_CHANNEL_BLUE, notConnectedLEDActive ? LED_BRIGHTNESS : 0);
+    }
   }
 }
 
