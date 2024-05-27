@@ -5,6 +5,9 @@
 // April 3 2024
 #define VERSION "1.0.2"
 
+// Uncomment the line below to turn on debugging info over Serial communication
+// #define DEBUG_MODE
+
 #include <Wire.h>
 #include <math.h>
 
@@ -46,7 +49,7 @@
 #define MIN_SAMPLING_FREQUENCY 1
 #define MAX_SAMPLING_FREQUENCY 200
 
-#define TIMER_PRECISION 1000
+#define TIMER_PRECISION 1000000
 
 #define DISCO_INTERVAL 100
 #define NOT_CONNECTED_INTERVAL 500
@@ -85,12 +88,17 @@ TaskHandle_t readIMU, clientHandler, pairingTask;
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
     deviceConnected = true;
+    pServer->getAdvertising()->stop();
+    #ifdef DEBUG_MODE
     Serial.println("Client connected");
+    #endif
   };
   void onDisconnect(BLEServer *pServer) {
     deviceConnected = false;
-    Serial.println("Client disconnected");
     pServer->getAdvertising()->start();
+    #ifdef DEBUG_MODE
+    Serial.println("Client disconnected");
+    #endif
   }
 };
 
@@ -104,12 +112,20 @@ class SettingsUpdatedCallback : public BLECharacteristicCallbacks {
     int reqFrequency = std::max(std::min(value, (uint16_t)MAX_SAMPLING_FREQUENCY), (uint16_t)MIN_SAMPLING_FREQUENCY);
     samplingDelay = round((float)TIMER_PRECISION / (float)reqFrequency);
     frequency = TIMER_PRECISION / samplingDelay;
+    #ifdef DEBUG_MODE
+    Serial.print("Sampling delay:\t");
+    Serial.println(samplingDelay);
+    Serial.print("Sampling frequency:\t");
+    Serial.println(frequency);
+    #endif
     pCharacteristic->setValue(frequency);
   }
 };
 
 void setup() {
+  #ifdef DEBUG_MODE
   Serial.begin(115200);
+  #endif
 
   //Set pinmodes for slider en button
   pinMode(LED_R, OUTPUT);
@@ -187,13 +203,15 @@ void readIMUCode(void *parameter) {
 
 void clientHandlerCode(void *parameters) {
   for (;;) {
-    unsigned long curTime = millis();
-    if (deviceConnected && (curTime - lastTime) >= samplingDelay) {
-      // Set Characteristic value and notify connected client
-      imuCharacteristics.setValue(output, 12);
+    unsigned long curTime = esp_timer_get_time();
+    if ((curTime - lastTime) >= samplingDelay) {
+      if (deviceConnected) {
+        // Set Characteristic value and notify connected client
+        imuCharacteristics.setValue(output, 12);
 
-      imuCharacteristics.notify();
-      lastTime = curTime;
+        imuCharacteristics.notify();
+      }
+      lastTime += samplingDelay;
     }
   }
 }
@@ -254,7 +272,9 @@ void loop() {
 }
 
 void SetupBLE() {
+  #ifdef DEBUG_MODE
   Serial.println("Setting up BLE..");
+  #endif
   // Create the BLE Device
   BLEDevice::init(BLE_NAME_PREFIX + getBluetoothAddress());
 
@@ -288,7 +308,9 @@ void SetupBLE() {
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pServer->getAdvertising()->start();
 
+  #ifdef DEBUG_MODE
   Serial.println("Waiting on client...");
+  #endif
 }
 
 std::string getBluetoothAddress() {
