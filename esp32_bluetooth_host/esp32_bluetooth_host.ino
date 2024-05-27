@@ -3,7 +3,7 @@
 // May 5 2022
 // Updated by Frank Bosman
 // April 3 2024
-#define VERSION "1.0.2"
+#define VERSION "1.0.3"
 
 // Uncomment the line below to turn on debugging info over Serial communication
 // #define DEBUG_MODE
