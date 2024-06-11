@@ -1,8 +1,11 @@
 # Firmware
 
 Firmware for the [CreaTeBME](https://github.com/CreaTe-M8-BME/CreaTeBME) sensors.
-
-No additional libraries are required. You only need to make sure you have the 2.0.0 version of the esp32 board manager installed. And are using the `WEMOS LOSIN32` board.
+## Requirements
+### Libaries
+No additional libraries are required.
+### Board manager
+Make sure you have the version `2.0.0` of the `esp32 board manager` installed and have selected the `WEMOS LOLIN32` board.
 
 ## Flashing firmware
 
@@ -31,15 +34,15 @@ pipenv install
 
 
 ### 2. Compiling the code
-After every code change you have to recompile the arduino code. You do not have to do this if the code hasn't changed.<br>
+After every code change, you have to recompile the arduino code. You do not have to do this if the code hasn't changed.<br>
 
-If you haven't already, install the board manager for the ESP32 by Espressif. make sure you install version `2.0.0`.
+If you haven't already, install the board manager for the ESP32 by *Espressif*. make sure you install version `2.0.0`.
 And select the `WEMOS LOLIN32` board in the Arduino IDE.
 
 In your Arduino IDE, export your sketch as a series of .bin files with `Sketch` -> `Export Compiled Binary`.
 
 > [!WARNING]
-> Make sure you use version `2.0.0` of the `esp32` boards manager by Espressif. Earlier versions do not compile the firmware correctly and newer versions have a bug with the `wire` library that prevents the IMU from working correctly. [Installation guide.](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html)
+> Make sure you use version `2.0.0` of the `esp32 boards manager` by *Espressif*. Earlier versions do not compile the firmware correctly and newer versions have a bug with the `wire` library that prevents the IMU from working correctly. [Installation guide.](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html)
 
 ### 3. Flashing the firmware
 Repeat this step for every sensor you want to flash. It will automatically detect the **first** connected sensor.
