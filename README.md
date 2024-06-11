@@ -34,7 +34,7 @@ pipenv install
 
 
 ### 2. Compiling the code
-After every code change you have to recompile the arduino code. You do not have to do this if the code hasn't changed.<br>
+After every code change, you have to recompile the arduino code. You do not have to do this if the code hasn't changed.<br>
 
 If you haven't already, install the board manager for the ESP32 by *Espressif*. make sure you install version `2.0.0`.
 And select the `WEMOS LOLIN32` board in the Arduino IDE.
